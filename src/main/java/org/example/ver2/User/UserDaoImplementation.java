@@ -1,0 +1,104 @@
+package org.example.ver2.User;
+
+import org.mindrot.jbcrypt.BCrypt;
+
+import java.sql.*;
+
+public class UserDaoImplementation implements UserDao{
+
+    private static final String URL = "jdbc:mysql://localhost:3306/cooperative_management_system";
+
+    private static final String USERNAME = "root";
+
+    private static final String PASSWORD = "";
+
+    private Connection connect() throws SQLException {
+        return DriverManager.getConnection(URL, USERNAME, PASSWORD);
+    }
+
+    @Override
+    public void signUp(User user) {
+
+        if(isUsernameExists(user.getUsername())) {
+            System.out.println("Username already exists. Please choose another one.");
+            return;
+        }
+
+        final String query = "INSERT INTO users (username, password) VALUES (?, ?)";
+        final String hashedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt(12));
+
+        try(Connection connection = connect();
+           PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+
+            preparedStatement.setString(1, user.getUsername().trim().toLowerCase());
+            preparedStatement.setString(2, hashedPassword);
+
+            int result = preparedStatement.executeUpdate();
+
+            if(result > 0) {
+                System.out.println("Registration successful!");
+            } else {
+                System.out.println("Registration failed. Please try again.");
+            }
+        } catch (SQLException e) {
+            System.out.println("Error during registration: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public User logIn(String username, String password) {
+        final String query = "SELECT * FROM users WHERE username = ?";
+
+        User user = null;
+
+        try(Connection connection = connect();
+           PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+
+            preparedStatement.setString(1, username.trim().toLowerCase());
+
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            if(resultSet.next()) {
+                String storedHashedPassword = resultSet.getString("password");
+
+                if(BCrypt.checkpw(password, storedHashedPassword)) {
+                    System.out.println("Login success. Welcome, " + username + "!");
+                    
+                    user = User.builder()
+                            .id(resultSet.getInt("id"))
+                            .username(resultSet.getString("username"))
+                            .build();
+                } else {
+                    System.out.println("Incorrect password. Please try again.");
+                }
+
+            } else {
+                System.out.println("Username not found.");
+            }
+
+        } catch(SQLException e) {
+            System.out.println("Error during login: " + e.getMessage());
+        }
+        return user;
+    }
+
+    private boolean isUsernameExists(String username) {
+
+        final String query = "SELECT COUNT(*) FROM users WHERE username = ?";
+
+        try(Connection connection = connect();
+        PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+            preparedStatement.setString(1, username.trim().toLowerCase());
+
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            if(resultSet.next()) {
+                return resultSet.getInt(1) > 0;
+            }
+
+        } catch(SQLException e) {
+            System.out.println("Error checking username existence: " + e.getMessage());
+        }
+        return  false;
+    }
+}
